@@ -1,0 +1,103 @@
+import json
+import uuid
+import time
+import socket
+import traceback
+import xlrd
+import threading
+import pyperclip
+from selenium import webdriver
+from utils.StringUtils import contain
+from selenium.webdriver.common.by import By
+from queue import Queue
+from selenium.webdriver.chrome.service import Service
+from utils.HubstudioUtils2 import startEnv, openClient,closeEnv
+from utils.WebDriverUtils import is_show_in_seconds
+from selenium.webdriver.common.keys import Keys
+from win32clipboard import GetClipboardData, OpenClipboard, CloseClipboard, EmptyClipboard, SetClipboardData, EnumClipboardFormats
+import win32con
+
+
+
+def nextTab(driver):
+    print('a')
+    tabs = driver.window_handles
+    index = tabs.index(driver.current_window_handle)
+    driver.switch_to.window(tabs[index + 1])
+    time.sleep(1)
+
+
+def do_run(table, ncols, queue):
+    envname = table.cell_value(i, 0)
+    url = table.cell_value(i, 1)
+    helpword = table.cell_value(i, 2)
+    password = table.cell_value(i, 3)
+    print('helpword:', helpword)
+    url1 = table.cell_value(i, 4)
+    url2 = table.cell_value(i, 5)
+    url3 = table.cell_value(i, 6)
+    print("========================================================================")
+    print(envname)
+    driver = startEnv(envname)
+    try:
+        driver.get("http://www.baidu.com")
+        print('lens:', len(driver.window_handles))
+        time.sleep(5)
+        for k in range(10):
+            driver.execute_script("window.open('" + url + "');")
+            print(str(k)+':'+url)
+            time.sleep(5)
+            if len(driver.window_handles) > 1:
+                nextTab(driver)
+                break
+
+        driver.refresh()
+        time.sleep(10)
+
+        if is_show_in_seconds(driver, By.CSS_SELECTOR, "button[class='button btn--rounded btn-default']", 5):
+            print("已登录")
+            ele = driver.find_element(By.CSS_SELECTOR, "input[class='MuiInputBase-input MuiInput-input']")
+            ele.send_keys(password)
+            driver.find_element(By.CSS_SELECTOR, "button[class='button btn--rounded btn-default']").click()
+            time.sleep(5)
+        else:
+            print("未登录")
+            time.sleep(1)
+            inputs = driver.find_elements(By.CSS_SELECTOR, "input[class='MuiInputBase-input MuiInput-input']") #找到助记词输入框
+            print('len:', len(inputs))
+            pyperclip.copy(helpword)
+            inputs[0].send_keys(Keys.CONTROL, 'v') #复制粘贴助记词
+
+            driver.find_element(By.CSS_SELECTOR, "button[class='button btn--rounded btn-primary btn--large import-srp__confirm-button']").click()
+            time.sleep(1)
+            print('finish')
+
+        # driver.execute_script("window.open('" + url1 + "');")
+        # time.sleep(2)
+        # driver.execute_script("window.open('" + url2 + "');")
+        # time.sleep(2)
+        # driver.execute_script("window.open('" + url3 + "');")
+        # time.sleep(2)
+
+    except Exception as err:
+        traceback.print_exc()
+        # pass
+    finally:
+    #    closeEnv(envname)
+        queue.get()
+
+
+if __name__ == '__main__':
+    openClient()
+    xlsx = xlrd.open_workbook("openmask.xlsx")
+    sheet = xlsx.sheet_by_index(0)
+    nrows = sheet.nrows
+    print(nrows)
+    ncols = sheet.ncols
+    print(ncols)
+    q = Queue(maxsize=1)
+    for i in range(1, nrows):
+        print('main->i:', i)
+        q.put(i)
+        threading.Thread(target=do_run, args=(sheet, ncols, q), name=str(i)).start()
+        time.sleep(2)
